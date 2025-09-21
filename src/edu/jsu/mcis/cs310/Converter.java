@@ -2,6 +2,8 @@ package edu.jsu.mcis.cs310;
 
 import com.github.cliftonlabs.json_simple.*;
 import com.opencsv.*;
+import java.io.*;
+import java.util.List;
 
 public class Converter {
     
@@ -77,8 +79,53 @@ public class Converter {
         String result = "{}"; // default return value; replace later!
         
         try {
-        
-            // INSERT YOUR CODE HERE
+            // Reading csv rows // added a try-with-resources because it was suggested when I initially didn't have a try-with-resources
+            try (CSVReader reader = new CSVReader(new java.io.StringReader(csvString))) {
+                List<String[]> csvData = reader.readAll(); // Reads all rows, each array is a row, where the first row is the column headers
+            
+                String[] header = csvData.get(0); // Gets the headers for each column
+            
+                JsonArray colHeadings = new JsonArray(); // Holds the headers
+                JsonArray prodNums = new JsonArray(); // holds the prodNums
+                JsonArray data = new JsonArray(); // holds the rest of the data rows
+            
+                colHeadings.addAll(java.util.Arrays.asList(header)); // adds all the headers
+            
+                for (int i = 1; i < csvData.size(); i++) {
+                    String[] row = csvData.get(i);
+                    
+                    prodNums.add(row[0]); // Adds the ProdNum column to the array
+            
+                    JsonArray dataRow = new JsonArray();
+            
+                    for (int j = 1; j < row.length; j++) {
+                        String cell = row[j];
+                
+                        if (j == 2 || j == 3) { // parsing the season and episode columns that are in index 1 and 2 as integers
+                            try {
+                                int intValue = Integer.parseInt(cell);
+                                dataRow.add(intValue);
+                            }
+                            catch (NumberFormatException e) {
+                                dataRow.add(cell); // Adds the data as a string if it isn't a parseable int
+                            }
+                        } else {
+                            dataRow.add(cell); // Adds the rest of the remaining columns as strings
+                        }
+                    }
+                
+                    data.add(dataRow); // Adds the row data array to the data JsonArray
+                
+                }
+            
+                // Creating a json object with the three keys for prodnums, headings, and the rest of the data
+                JsonObject json = new JsonObject();
+                json.put("ProdNums", prodNums);
+                json.put("ColHeadings", colHeadings);
+                json.put("Data", data);
+            
+                result = Jsoner.serialize(json); // Serializing the json object to a string
+            }
             
         }
         catch (Exception e) {
@@ -95,8 +142,67 @@ public class Converter {
         String result = ""; // default return value; replace later!
         
         try {
+            // Parsing a json string into a json object and getting the prodnums, headings, and data arrays
+            JsonObject json = (JsonObject) Jsoner.deserialize(jsonString);
+            JsonArray colHeadings = (JsonArray) json.get("ColHeadings");
+            JsonArray prodNums = (JsonArray) json.get("ProdNums");
+            JsonArray data = (JsonArray) json.get("Data");
             
-            // INSERT YOUR CODE HERE
+            // Using StringWriter and CSVWriter to build the CSV output
+            StringWriter sw = new StringWriter();
+            CSVWriter writer = new CSVWriter(sw);
+            
+            // Creating the header row and getting the headings
+            String[] headerRow = new String[colHeadings.size()];
+            // Getting each heading
+            for (int i = 0; i < colHeadings.size(); i++) {
+                headerRow[i] = colHeadings.getString(i);
+            }
+            // Writing the header rows
+            writer.writeNext(headerRow);
+            
+            // Going over each row of data
+            for (int i = 0; i < data.size(); i++) {
+                JsonArray rowData = (JsonArray) data.get(i);
+                String[] row = new String[rowData.size() + 1]; // Skipping index 0 because PodNum is stored differently
+                
+                row[0] = prodNums.get(i).toString(); // Adding ProdNum to the start of the row
+                
+                // Going through each cell in the data row and converting that data to a string for the CSV output
+                for (int j = 0; j < rowData.size(); j++) {
+                    Object cell = rowData.get(j);
+                    String value = "";
+                    
+                    if (cell == null) {
+                        value = "";
+                    } else if (cell instanceof String){
+                        value = (String) cell;
+                    } else if (cell instanceof Number) {
+                        value = cell.toString();
+                    }
+                    
+                    // Special for episode number
+                    if (j == 2) {
+                        try {
+                            int episodeNumber = Integer.parseInt(value);
+                            value = String.format("%02d", episodeNumber); // Adds padding for episodes that start with a leading zero
+                        }
+                        catch (NumberFormatException e){
+                            // Ignores if it doesn't need to have a leading zero
+                        }
+                    }
+                
+                    // Stores the values in the correct spot excluding the 0 index since that is ProdNum
+                    row[j + 1] = value;
+                }
+                
+                // Writes the complete row for CSV
+                writer.writeNext(row);
+            }
+            
+            // Closes the writer and gets the full CSV output
+            writer.close();
+            result = sw.toString();
             
         }
         catch (Exception e) {
